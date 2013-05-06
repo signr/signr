@@ -44,7 +44,7 @@ var
   //shortcut for "removeChild"
   remove = function(n) {
     n = byId(n);
-    n.parentNode.removeChild(n);
+    if(n) n.parentNode.removeChild(n);
   },
 
   //shortcut for "setAttribute", "getAttribute"
@@ -94,6 +94,15 @@ var
       return;
     }
 
+    if(style == "opacity") {
+      if(value !== undefined) {
+        n.style.filter = "alpha(opacity="+Math.round(value*100)+")";
+      } else {
+        n = (n.filters.alpha || {}).opacity;
+      }
+      return n < 2 ? n/100 : 1;
+    }
+
     if(value !== undefined) {
       n.style[style] = value;
     } else {
@@ -121,7 +130,7 @@ var
   //converts an HTML string to a single node
   make = function(str, n) {
     n = doc.createElement("b");
-    n.innerHTML = str;
+    n.innerHTML = str || "<div><\/div>";
     return n.firstChild;
   },
 
@@ -171,9 +180,11 @@ var
   },
 
   //gets the size and position of a node relative to the page -> {x:0, y:0, w:0, h:0}
-  pos = make("<p>").getBoundingClientRect ? function(n, scroll) {
+  pos = make().getBoundingClientRect ? function(n, scroll) {
+    if(n == doc.body) return bodyPos();
+
     n = n.getBoundingClientRect();
-    scroll = (n != doc.body) ? S.scrolled() : {x:0, y:0};
+    scroll = S.scrolled();
     return {
       x: n.left + scroll.x,
       y: n.top + scroll.y,
@@ -181,6 +192,8 @@ var
       h: n.bottom - n.top
     };
   } : function(n, n2, x, y) {
+    if(n == doc.body) return bodyPos();
+
     x = y = 0, n2 = n;
     while(n && n.nodeType == 1) {
       x += n.offsetLeft;
@@ -195,12 +208,23 @@ var
     }
   },
 
+  bodyPos = function(n) {
+    n = doc.documentElement;
+    return {
+      x: 0,
+      y: 0,
+      w: n.clientWidth,
+      h: n.clientHeight
+    }
+  },
+
   //makes one node the same size and position as the 2nd node with
   //optional padding (pad = {x:0, y:0, h:0, w:0})
-  cover = function(node, to, pad, cssPos) {
-    cssPos = css(to, "position") == "static"  ? "static" : "absolute";
-    to = pos(to);
+  cover = function(node, to, pad, isBody, cssPos) {
+    cssPos = !ie6 && (to == doc.body || css(to, "position") == "fixed") ? "fixed" : "absolute";
+
     pad = mixin({x:0, y:0, w:0, h:0}, pad);
+    to = pos(to);
     css(node, {
       left: (to.x - pad.x) + px,
       top: (to.y - pad.y) + px,
@@ -214,7 +238,7 @@ var
   csv2obj = function(str, obj) {
     obj = obj || {};
     if(str) str = str.replace(/([^,=]+)(?:=([^,]+))?/g, function(_, n, v) {
-      obj[n] = v;
+      obj[n] = isNaN(v) ? v : v*1;
     });
     return obj;
   },
@@ -289,7 +313,7 @@ var
     //later.
     css(ext, {
       display: "",
-      position: css(ext, "position") == "fixed" ? "fixed" : "absolute"
+      position: !ie6 && css(ext, "position") == "fixed" ? "fixed" : "absolute"
     });
     delClass(ext, "signr-hide");
 
@@ -370,18 +394,19 @@ var
       position: function(ext, node, options) {
 
         ext = ext || doc.body;
-        if(ext == doc.body) ext.style.position = "static";
+        if(!ie6 && ext == doc.body) ext.style.position = "fixed";
 
         var x, y, scroll,
           corner = options.inside || "c",
           side = corner.charAt(0),
-          pad = options.pad ? options.pad.split(",") : [0,0],
+          pad = options.pad || 0,
           node = pos(node),
           box = pos(ext);
 
-        pad = {x:pad[0], y:pad[1]};
+        pad = pad >= 0 ? [pad, pad] : pad.split(",");
+        pad = {x:pad[0]*1, y:(pad[1] || pad[0])*1};
 
-        //to make up for position=static on IE6 but makes no attempt
+        //to make up for position=fixed on IE6 but makes no attempt
         //to maintain it on page scroll
         if(ie6 && ext == doc.body) {
           scroll = scrolled();
@@ -430,11 +455,12 @@ var
         var x, y,
           corner = options.around || "bl",
           side = corner.charAt(0),
-          pad = options.pad ? options.pad.split(",") : [0,0],
+          pad = options.pad || 0,
           node = pos(node),
           box = pos(ext);
 
-        pad = {x:pad[0], y:pad[1]};
+        pad = pad >= 0 ? [pad, pad] : pad.split(",");
+        pad = {x:pad[0]*1, y:(pad[1] || pad[0])*1};
 
         if(side == "t") {  //top
           y = node.y - box.h - pad.y;
@@ -479,9 +505,9 @@ var
 
         options.shadowID = ensureHasID(n);
 
-        if(pad = options.pad) {
+        if(pad = options.shadowoffset) {
           pad = pad.split(",");
-          pad = {x:pad[0], y:pad[1], w:pad[2], h:pad[3]};
+          pad = {x:pad[0]*1, y:pad[1]*1, w:pad[2]*1, h:pad[3]*1};
         }
 
         insBefore(n, ext);
@@ -510,6 +536,23 @@ var
 
       hide: function(ext, node, options) {
         remove(options.ie6shimID);
+      }
+    },
+
+    dim: {
+      show: function(ext, node, options, n, white) {
+        n = make();
+        options.dimBoxID = ensureHasID(n);
+        insBefore(n, ext);
+        css(n, {
+          opacity: options.dim/100 || 0.3,
+          background: ("white" in options) ? "#fff" : "#000"
+        });
+        cover(n, "inside" in options ? node : doc.body);
+      },
+
+      hide: function(ext, node, options) {
+        remove(options.dimBoxID);
       }
     }
   },
@@ -553,12 +596,18 @@ var
     defs: {anim:1, shadow:1}
   };
 
-if(ie6) S.defs.ie6shim = 1;
-
-insBefore(
-  make("<style>.signr-shadow{box-shadow:1px 1px 7px rgba(0,0,0,0.5)}.signr-hide{display:none}<\/style>"),
-  doc.getElementsByTagName("script")[0]
+//inject some CSS into our page
+!function(n, t) {
+  n.type = "text/css";
+  insBefore(n, doc.getElementsByTagName("script")[0]);
+  n.styleSheet ? n.styleSheet.cssText = t : n.innerHTML = t;
+}(
+  doc.createElement("style"),
+  ".signr-shadow{box-shadow:1px 1px 7px rgba(0,0,0,0.5)}.signr-hide{display:none}"
 );
+
+//make the iframe shim default under IE6 only
+if(ie6) S.defs.ie6shim = 1;
 
 return S;
 
