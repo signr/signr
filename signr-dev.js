@@ -16,8 +16,8 @@ var signr = function(win, doc, undefined) {
 "use strict";
 
 var
-  addEventListener = !!doc.addEventListener,  //true if supported
-  ie8 = win.ActiveXObject && !addEventListener,  //ie8 and under
+  addEvent = !!doc.addEventListener,  //true if supported
+  ie8 = win.ActiveXObject && !addEvent,  //ie8 and under
   ie7 = ie8 && !doc.querySelector,  //ie7 and under
   ie6 = ie7 && !win.XMLHttpRequest,
 
@@ -135,28 +135,21 @@ var
   },
 
   //shortcut to "addEventListener"
-  onEvent = addEventListener ? function(n, type, fn) {
+  onEvent = addEvent ? function(n, type, fn) {
     n.addEventListener(type, fn, false);
   } : function(n, type, fn) {
-    n.attachEvent("on" + type, dn);
+    n.attachEvent("on" + type, fn);
   },
 
   //shortcut to "removeEventListener"
-  unEvent = addEventListener ? function(n, type, fn) {
+  unEvent = addEvent ? function(n, type, fn) {
     n.removeEventListener(type, fn, false);
   } : function(n, type, fn) {
-    n.detachEvent("on" + type, dn);
+    n.detachEvent("on" + type, fn);
   },
 
-  //shortcut to "preventDefault"
-  stopEvent = function(e) {
-    if(e.preventDefault) {
-      e.preventDefault();
-      e.stopPropagation();
-    } else {
-      e.cancelBubble = true;
-      e.returnValue = false;
-    }
+  noEvent = function(e) {
+    addEvent ? e.preventDefault() : e.returnValue = false;
   },
 
   //gets how much the page has scrolled -> {x:0, y:0}
@@ -208,6 +201,7 @@ var
     }
   },
 
+  //gets the size of the body node -> {x:0, y:0, w:0, h:0}
   bodyPos = function(n) {
     n = doc.documentElement;
     return {
@@ -254,7 +248,7 @@ var
 
   //show a popup
   show = function(ext, node, options, event) {
-    var i, fx, extID, nodeID;
+    var i, fx, extID, nodeID, nil = "null";
 
     //get options from various sources. We need to get the options
     //first because "ext" and "node" can be null and set by a plugin
@@ -277,33 +271,21 @@ var
     }
 
     //hereonafter we pass the call to the plugins. Each plugin can contain
-    //4 functions which we call if they exist: "adjust, position, show, hide".
+    //4 functions which we call if they exist: "adopt, position, show, hide".
 
-    //allow plugins to adjust the options before we do anything
+    //allow plugins to tweak the options before we do anything
     for(i in options) {
-      fx = S.fx[i];
-      if(fx && fx.adjust) fx.adjust(ext, node, options, event);
+      if(options[i] != nil) {
+        fx = S.fx[i];
+        if(fx && fx.adopt) {
+          if(fx.adopt(ext, node, options, event)) return;  //if returns "true" then abort
+        }
+      }
     }
 
-    //"adjust" may give us new nodes, so re-get them
+    //"adopt" may give us new nodes, so re-get them
     ext = byId(options.extID);
     node = byId(options.nodeID);
-
-    //if popup is already showing and invoked by same source, then ignore
-    //so that multiple mouseovers won't interfere.
-    //But if the options obj contains the "toggle" param, then hide the 
-    //popup. Toggle allows any non-user action to hide the popup.
-    //Note "toggle" can be set by a hint and not necessarily by the user.
-    if(isShowing(extID) && showing[extID].nodeID == nodeID) {
-      if("toggle" in options) hide(ext, event);
-      return;
-    }
-
-    //otherwise ignore
-    if(isShowing(extID)) {
-      if(!("toggle" in options)) return;
-      hide(ext, event);
-    }
 
     //persist the options until the popup is hidden
     showing[options.extID] = options;
@@ -319,14 +301,18 @@ var
 
     //position the popup
     for(i in options) {
-      fx = S.fx[i];
-      if(fx && fx.position) fx.position(ext, node, options, event);
+      if(options[i] != nil) {
+        fx = S.fx[i];
+        if(fx && fx.position) fx.position(ext, node, options, event);
+      }
     }
 
     //delegate showing to plugins
     for(i in options) {
-      fx = S.fx[i];
-      if(fx && fx.show) fx.show(ext, node, options, event);
+      if(options[i] != nil) {
+        fx = S.fx[i];
+        if(fx && fx.show) fx.show(ext, node, options, event);
+      }
     }
   },
 
@@ -335,18 +321,20 @@ var
     return !!showing[byId(ext).id];
   },
 
-  //gets the closest ancestor node which is a popup, or null
-  findParentPopup = function(n) {
+  //gets the closest parent node which is a popup, or null
+  findPopup = function(n) {
     if(!n.nodeType) n = n.target || n.srcElement;
  
-    while(n && (n = n.offsetParent) && n.nodeType == 1) {
+    while(n && n.nodeType == 1) {
       if(showing[n.id]) return n;
+      n = n.offsetParent;
     }
   },
 
   //hide a popup
   hide = function(ext, event) {
     var options, i, fx, node;
+    ext = byId(ext);
 
     //hide can be called on any child node as a programmatic convenience
     //so we need to walk up the parent tree until we find the popup node
@@ -363,15 +351,16 @@ var
         delete showing[options.extID];
         break;
       }
-      ext = ext.parentNode;
+      ext = ext.offsetParent;
     }
   },
 
   //These are plugins that we delegate all tasks too. We recognize 4
   //methods on the plugins that are called in sequence. Each method is 
   //called on all plugins before the 2nd method is called.
-  //  "adjust" is called 1st that can do anything including 
-  //          manipulating the options object
+  //  "adopt" is called 1st that can do anything including 
+  //          manipulating the options object. This can return "true"
+  //          if you want to abort then popup
   //  "position" is called 2nd that can move the popup box anywhere
   //  "show" is called 3rd that manipulates CSS to show the node
   //  "hide" is called 4th when the popup is being hidden
@@ -392,11 +381,10 @@ var
     //To set the position do "inside=tl" where "tl" is as below.
     inside: {
       position: function(ext, node, options) {
-
-        ext = ext || doc.body;
-        if(!ie6 && ext == doc.body) ext.style.position = "fixed";
+        node = node || doc.body;
 
         var x, y, scroll,
+          isBody = (node == doc.body),
           corner = options.inside || "c",
           side = corner.charAt(0),
           pad = options.pad || 0,
@@ -406,12 +394,16 @@ var
         pad = pad >= 0 ? [pad, pad] : pad.split(",");
         pad = {x:pad[0]*1, y:(pad[1] || pad[0])*1};
 
-        //to make up for position=fixed on IE6 but makes no attempt
-        //to maintain it on page scroll
-        if(ie6 && ext == doc.body) {
-          scroll = scrolled();
-          node.x = scroll.x;
-          node.y = scroll.y;
+        if(isBody) {
+          if(ie6) {
+            //to make up for position=fixed on IE6 but makes no attempt
+            //to maintain it on page scroll
+            scroll = scrolled();
+            node.x = scroll.x;
+            node.y = scroll.y;
+          } else {
+            ext.style.position = "fixed";
+          }
         }
 
         if(side == "c") {  //center
@@ -494,6 +486,8 @@ var
       }
     },
 
+    //this plugin shows a shadow under the popup. On IE it is done using
+    //IE filters and for other browsers we use "box-shadow"
     shadow: {
       show: ie8 ? function(ext, node, options, pad) {
         var 
@@ -525,6 +519,9 @@ var
       }
     },
 
+    //this plugin works around the windowed controls problem on IE6 where
+    //select elements overlap all regular elements. We load this
+    //plugin by default on IE6.
     ie6shim: {
       show: function(ext, node, options, n, s) {
         n = make("<iframe class='signr-ie6shim' style='filter:alpha(opacity=1)'" +
@@ -539,6 +536,8 @@ var
       }
     },
 
+    //this plugin dims the screen by adding a large semi-transparent
+    //div to the document body. Can be configured to be white or black
     dim: {
       show: function(ext, node, options, n, white) {
         n = make();
@@ -573,8 +572,10 @@ var
     css: css,
     addClass: addClass,
     make: make,
+
     onEvent: onEvent,
     unEvent: unEvent,
+    noEvent: noEvent,
 
     scrolled: scrolled,
     pos: pos,
@@ -585,7 +586,7 @@ var
     showing: showing,
     show: show,
     isShowing: isShowing,
-    findParentPopup: findParentPopup,
+    findPopup: findPopup,
     hide: hide,
 
     fx: fx,
@@ -597,13 +598,15 @@ var
   };
 
 //inject some CSS into our page
-!function(n, t) {
+!function(n, t, t2) {
+  t += "-webkit-" + t2 + "-moz-" + t2 + t2 + "}";
   n.type = "text/css";
   insBefore(n, doc.getElementsByTagName("script")[0]);
   n.styleSheet ? n.styleSheet.cssText = t : n.innerHTML = t;
 }(
   doc.createElement("style"),
-  ".signr-shadow{box-shadow:1px 1px 7px rgba(0,0,0,0.5)}.signr-hide{display:none}"
+  ".signr-hide{display:none}.signr-shadow{",
+  "box-shadow:1px 1px 7px rgba(0,0,0,0.5);"
 );
 
 //make the iframe shim default under IE6 only
@@ -612,3 +615,54 @@ if(ie6) S.defs.ie6shim = 1;
 return S;
 
 }(this, document);
+
+//===== plugin to toggle between showing/hiding a popup
+
+signr.fx.toggle = {
+  adopt: function(ext, node, options) {
+    //returns false if popup hidden
+    //returns true if popup showing which aborts current request
+    return signr.showing[ext.id] && (signr.hide(ext) || 1);
+  }
+}
+
+//===== plugin to close popups upon focus elsewhere
+
+!function(signr, doc, active, onEvent) {
+
+active = {};
+
+onEvent = function(e, ext, closeable, stop) {
+  closable = signr.mixin({}, active);
+  ext = e;
+
+  while(ext && (ext = signr.findPopup(ext))) {
+    closable[ext.id] = null;
+    ext = signr.byId(signr.showing[ext.id].nodeID);  //nodeID can be null
+  }
+
+  stop = 0;
+  for(ext in closable) {
+    if(ext = closable[ext]) {
+      signr.hide(ext.extID);
+      stop = 1;
+    }
+  }
+  if(stop) signr.noEvent(e);
+};
+
+signr.onEvent(doc, "mousedown", onEvent);
+signr.onEvent(doc, "DOMFocusIn", onEvent);  //Firefox
+signr.onEvent(doc, "focusin", onEvent);  //IE, Opera, Webkit
+
+signr.fx.closeonblur = {
+  show: function(ext, node, options) {
+    active[ext.id] = options;
+  },
+  hide: function(ext, node, options) {
+    active[ext.id] = null;
+  },
+  evt: onEvent
+};
+
+}(signr, document);
