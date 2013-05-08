@@ -257,21 +257,22 @@ var
 
   //show a popup
   show = function(ext, node, options, event) {
-    var i, fx, extID, nodeID, nil = "null";
+    var obj, i, fx, extID, nodeID, nil = "null";
 
     //get options from various sources. We need to get the options
     //first because "ext" and "node" can be null and set by a plugin
-    options = mixin(csv2obj(options), S.defs);
+    obj = mixin({}, S.defs);
     if(ext) {
       ext = byId(ext);
-      extID = options.extID = ensureHasID(ext);
-      csv2obj(attr(ext, "data-signr"), options);
+      extID = obj.extID = ensureHasID(ext);
+      csv2obj(attr(ext, "data-signr"), obj);
     }
     if(node) {
       node = byId(node);
-      nodeID = options.nodeID = ensureHasID(node);
-      csv2obj(attr(node, "data-signr"), options);
+      nodeID = obj.nodeID = ensureHasID(node);
+      csv2obj(attr(node, "data-signr"), obj);
     }
+    options = csv2obj(options, obj);
 
     //mixin hints. Hints allow one option to expand into multiple options.
     //e.g., {speechbubble:1} -> {speechbubble:1, fadein:1, roundedge:1}
@@ -625,7 +626,7 @@ var
 
 //we inject CSS to allow support for these classes:
 //  signr-x : add this to popups so they are hidden by default
-//  signr-shadow : our shadow plugin uses this to create shows
+//  signr-shadow : our shadow plugin uses this to create shadows
 !function(n, t) {
   t = ".signr-x{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
   n.type = "text/css";
@@ -643,9 +644,9 @@ return S;
 
 }(this, document);
 
-/****************** Plugins (optional) ******************/
+/****************** Behavioral Plugins ******************/
 
-//Plugin: anim
+//Plugin: toggle
 //Action: plugin to toggle between showing/hiding a popup. The default
 //  action for popups *without* this plugin is to hide the popup and then
 //  immediately show it again. This plugin will cause it to hide when
@@ -660,8 +661,7 @@ signr.fx.toggle = {
   }
 }
 
-//Plugin: anim
-//Autoloading: yes
+//Plugin: closeonblur
 //Action: plugin to close popups upon focus elsewhere
 
 !function(signr, doc, active, onEvent) {
