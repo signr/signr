@@ -296,6 +296,9 @@ var
     ext = byId(options.extID);
     node = byId(options.nodeID);
 
+    //hide it first if already showing
+    if(showing[options.extID]) hide(ext.id);
+
     //persist the options until the popup is hidden
     showing[options.extID] = options;
 
@@ -306,7 +309,7 @@ var
       display: "",
       position: !ie6 && css(ext, "position") == "fixed" ? "fixed" : "absolute"
     });
-    delClass(ext, "signr-hide");
+    delClass(ext, "signr-x");
 
     //position the popup
     for(i in options) {
@@ -379,19 +382,20 @@ var
 
   fx = {
 
-    //this plugin is injected in all popups by calling it inside "signr.defs"
-    //to use your custom animation, set anim=0
+    //Plugin: anim
+    //Autoloading: yes
+    //Action: hides the popup
+    //Params: set anim=0 to use your own animation plugin
     anim: {
       hide: function(ext, node, options) {
         if(options.anim == 1) ext.style.display = "none";
       }
     },
 
-    //this plugin positions a popup visually inside another node but
-    //not physically inside it. It can be made to dock against any 
-    //corner, edge or be dead centered. The "options" can contain an
-    //optional padding (i.e., "pad=3,4" means x+=3, y+=4)
-    //To set the position do "inside=tl" where "tl" is as below.
+    //Plugin: inside
+    //Action: positions the popup visually inside another node; docked or centered.
+    //Params: set inside=X where X is one of: tl,tr,tc,r,bl,br,bc,l,c
+    //Params: set pad=X,Y or pad=X where X|Y are integers
     inside: {
       position: function(ext, node, options) {
         node = node || doc.body;
@@ -451,10 +455,12 @@ var
       }
     },
 
-    //this plugin positions a popup adjacent to a node touching on any
-    //one edge and aligned on one further axis. The "options" can contain
-    //an optional padding (i.e., "pad=3,4" means x+=3, y+=4)
-    //To set the position do "around=tl" where "tl" is as below.
+    //Plugin: around
+    //Action: positions the popup next to another node touching on an edge.
+    //Params: set around=X where X is one of: tl,tr,tc,rt,rb,rc,bl,br,bc,lt,lb,lc
+    //Params: set pad=X,Y or pad=X where X|Y are integers
+    //Description: the popup touches the node on one edge and is aligned
+    //one further axis.
     around: {
       position: function(ext, node, options) {
         var x, y,
@@ -499,8 +505,10 @@ var
       }
     },
 
-    //this plugin shows a shadow under the popup. On IE it is done using
-    //IE filters and for other browsers we use "box-shadow"
+    //Plugin: shadow
+    //Autoloading: yes
+    //Action: adds a shadow to the popup
+    //Description: On IE it is done using additional nodes and IE filters
     shadow: {
       show: ie8 ? function(ext, node, options, pad) {
         var 
@@ -532,9 +540,9 @@ var
       }
     },
 
-    //this plugin works around the windowed controls problem on IE6 where
-    //select elements overlap all regular elements. We load this
-    //plugin by default on IE6.
+    //Plugin: anim
+    //Autoloading: yes on ie6 only
+    //Action: works around the windowed controls problem of selects always on top
     ie6shim: {
       show: function(ext, node, options, n, s) {
         n = make("<iframe class='signr-ie6shim' style='filter:alpha(opacity=1)'" +
@@ -549,8 +557,10 @@ var
       }
     },
 
-    //this plugin dims the screen by adding a large semi-transparent
-    //div to the document body. Can be configured to be white or black
+    //Plugin: anim
+    //Action: dims the screen with semi-transparent div added to document body.
+    //Params: add "white" option to make dim white, otherwise is black.
+    //Params: set dim=X where X >= 0 && X <= 100, default is 30
     dim: {
       show: function(ext, node, options, n, white) {
         n = make();
@@ -613,8 +623,11 @@ var
 
   /****************** CSS injection ******************/
 
+//we inject CSS to allow support for these classes:
+//  signr-x : add this to popups so they are hidden by default
+//  signr-shadow : our shadow plugin uses this to create shows
 !function(n, t) {
-  t = ".signr-hide{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
+  t = ".signr-x{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
   n.type = "text/css";
   insBefore(n, doc.getElementsByTagName("script")[0]);
   n.styleSheet ? n.styleSheet.cssText = t : n.innerHTML = t;
@@ -630,25 +643,33 @@ return S;
 
 }(this, document);
 
-/****************** Plugins ******************/
+/****************** Plugins (optional) ******************/
 
-//=== plugin to toggle between showing/hiding a popup
+//Plugin: anim
+//Action: plugin to toggle between showing/hiding a popup. The default
+//  action for popups *without* this plugin is to hide the popup and then
+//  immediately show it again. This plugin will cause it to hide when
+//  invoked in succession.
 
 signr.fx.toggle = {
-  adopt: function(ext, node, options) {
+  adopt: function(ext, node, o) {
     //returns false if popup hidden
     //returns true if popup showing which aborts current request
-    return signr.showing[ext.id] && (signr.hide(ext) || 1);
+    o = signr.showing[ext.id];
+    return o && (o.nodeID == node.id) && (signr.hide(ext) || 1);
   }
 }
 
-//=== plugin to close popups upon focus elsewhere
+//Plugin: anim
+//Autoloading: yes
+//Action: plugin to close popups upon focus elsewhere
 
 !function(signr, doc, active, onEvent) {
+"use strict";
 
 active = {};
 
-onEvent = function(e, ext, closeable, stop) {
+onEvent = function(e, ext, closeable) {
   closable = signr.mixin({}, active);
   ext = e;
 
@@ -657,14 +678,7 @@ onEvent = function(e, ext, closeable, stop) {
     ext = signr.byId(signr.showing[ext.id].nodeID);  //nodeID can be null
   }
 
-  stop = 0;
-  for(ext in closable) {
-    if(ext = closable[ext]) {
-      signr.hide(ext.extID);
-      stop = 1;
-    }
-  }
-  if(stop) signr.noEvent(e);
+  for(ext in closable) if(ext = closable[ext]) signr.hide(ext.extID);
 };
 
 signr.onEvent(doc, "mousedown", onEvent);
