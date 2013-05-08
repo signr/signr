@@ -140,15 +140,15 @@ var
   /****************** Events ******************/
 
   //shortcut to "addEventListener"
-  onEvent = addEvent ? function(n, type, fn) {
-    n.addEventListener(type, fn, false);
+  onEvent = addEvent ? function(n, type, fn, capture) {
+    n.addEventListener(type, fn, !!capture);
   } : function(n, type, fn) {
     n.attachEvent("on" + type, fn);
   },
 
   //shortcut to "removeEventListener"
-  unEvent = addEvent ? function(n, type, fn) {
-    n.removeEventListener(type, fn, false);
+  unEvent = addEvent ? function(n, type, fn, capture) {
+    n.removeEventListener(type, fn, !!capture);
   } : function(n, type, fn) {
     n.detachEvent("on" + type, fn);
   },
@@ -669,7 +669,7 @@ signr.fx.toggle = {
 
 active = {};
 
-onEvent = function(e, ext, closeable) {
+onEvent = function(e, ext, closable) {
   closable = signr.mixin({}, active);
   ext = e;
 
@@ -682,8 +682,7 @@ onEvent = function(e, ext, closeable) {
 };
 
 signr.onEvent(doc, "mousedown", onEvent);
-signr.onEvent(doc, "DOMFocusIn", onEvent);  //Firefox
-signr.onEvent(doc, "focusin", onEvent);  //IE, Opera, Webkit
+signr.onEvent(doc, window.addEventListener ? "focus" : "focusin", onEvent, true);
 
 signr.fx.closeonblur = {
   show: function(ext, node, options) {
