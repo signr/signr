@@ -16,27 +16,30 @@ var signr = function(win, doc, undefined) {
 "use strict";
 
 var
+  //constants
   addEvent = !!doc.addEventListener,  //true if supported
   ie8 = win.ActiveXObject && !addEvent,  //ie8 and under
   ie7 = ie8 && !doc.querySelector,  //ie7 and under
-  ie6 = ie7 && !win.XMLHttpRequest,
+  ie6 = ie7 && !win.XMLHttpRequest,  //ie6
 
-  progid = "filter:progid:DXImageTransform.Microsoft.",
-  px = "px",
-  className = "className",
+  progid = undefined || "filter:progid:DXImageTransform.Microsoft.",  //for IE filter
+  px = undefined || "px",
+  className = undefined || "className",
 
-  //copies all properties from origin object to target
+  //copies all properties from Origin to Target
   mixin = function(t, o) {
     for(var i in o) t[i] = o[i];
     return t;
   },
+
+  /****************** DOM ******************/
 
   //shortcut for "getElementById" with detection if param is already a node
   byId = function(s) {
     return s && s.charAt ? doc.getElementById(s) : s;
   },
 
-  //shortcut for "insertBefore". 3rd param is a toggle for insertAfter.
+  //shortcut for "insertBefore", 3rd param is a toggle for insertAfter.
   insBefore = function(n, ref, after) {
     return ref.parentNode.insertBefore(n, after ? ref.nextSibling : ref);
   },
@@ -134,6 +137,8 @@ var
     return n.firstChild;
   },
 
+  /****************** Events ******************/
+
   //shortcut to "addEventListener"
   onEvent = addEvent ? function(n, type, fn) {
     n.addEventListener(type, fn, false);
@@ -151,6 +156,8 @@ var
   noEvent = function(e) {
     addEvent ? e.preventDefault() : e.returnValue = false;
   },
+
+  /****************** Positioning ******************/
 
   //gets how much the page has scrolled -> {x:0, y:0}
   scrolled = function(n, fn) {
@@ -227,6 +234,8 @@ var
       position: cssPos
     });
   },
+
+  /****************** Popup Methods ******************/
 
   //converts a comma separated list into a hash object
   csv2obj = function(str, obj) {
@@ -355,15 +364,19 @@ var
     }
   },
 
-  //These are plugins that we delegate all tasks too. We recognize 4
-  //methods on the plugins that are called in sequence. Each method is 
-  //called on all plugins before the 2nd method is called.
-  //  "adopt" is called 1st that can do anything including 
+  /****************** Plugins (in built) ******************/
+
+  //These are plugins that we delegate all tasks too.
+  //We recognize 4 methods on the plugins that are called in sequence.
+  //Each method is called on all plugins before the 2nd method is called.
+  //
+  //  "adopt" is called 1st, that can do anything including 
   //          manipulating the options object. This can return "true"
-  //          if you want to abort then popup
-  //  "position" is called 2nd that can move the popup box anywhere
-  //  "show" is called 3rd that manipulates CSS to show the node
-  //  "hide" is called 4th when the popup is being hidden
+  //          if you want to abort then popup.
+  //  "position" is called 2nd that can move the popup box anywhere.
+  //  "show" is called 3rd that manipulates CSS to show the node.
+  //  "hide" is called 4th when the popup is being hidden.
+
   fx = {
 
     //this plugin is injected in all popups by calling it inside "signr.defs"
@@ -491,10 +504,10 @@ var
     shadow: {
       show: ie8 ? function(ext, node, options, pad) {
         var 
-          blur = "Blur(pixelradius=3,makeshadow='true',shadowOpacity=0.3);",
+          blur = undefined || "Blur(pixelradius=3,makeshadow='true',shadowOpacity=0.3);",
           n = make('<div class="signr-ie8shadow" style="-ms-' + 
-              S.progid + blur +
-              S.progid + blur + 
+              progid + blur +
+              progid + blur + 
               'background:#000"></div>');
 
         options.shadowID = ensureHasID(n);
@@ -556,7 +569,8 @@ var
     }
   },
 
-  //export object
+  /****************** Exports ******************/
+
   S = {
     ie8: ie8,
     ie7: ie7,
@@ -597,15 +611,15 @@ var
     defs: {anim:1, shadow:1}
   };
 
-//inject some CSS into our page
-!function(n, t, t2) {
-  t += "-webkit-" + t2 + "-moz-" + t2 + t2 + "}";
+  /****************** CSS injection ******************/
+
+!function(n, t) {
+  t = ".signr-hide{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
   n.type = "text/css";
   insBefore(n, doc.getElementsByTagName("script")[0]);
   n.styleSheet ? n.styleSheet.cssText = t : n.innerHTML = t;
 }(
   doc.createElement("style"),
-  ".signr-hide{display:none}.signr-shadow{",
   "box-shadow:1px 1px 7px rgba(0,0,0,0.5);"
 );
 
@@ -616,7 +630,9 @@ return S;
 
 }(this, document);
 
-//===== plugin to toggle between showing/hiding a popup
+/****************** Plugins ******************/
+
+//=== plugin to toggle between showing/hiding a popup
 
 signr.fx.toggle = {
   adopt: function(ext, node, options) {
@@ -626,7 +642,7 @@ signr.fx.toggle = {
   }
 }
 
-//===== plugin to close popups upon focus elsewhere
+//=== plugin to close popups upon focus elsewhere
 
 !function(signr, doc, active, onEvent) {
 
