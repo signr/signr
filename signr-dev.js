@@ -646,7 +646,8 @@ return S;
 
 /****************** Behavioral Plugins ******************/
 
-//Plugin: toggle
+/****** Plugin: toggle ******/
+
 //Action: plugin to toggle between showing/hiding a popup. The default
 //  action for popups *without* this plugin is to hide the popup and then
 //  immediately show it again. This plugin will cause it to hide when
@@ -661,7 +662,8 @@ signr.fx.toggle = {
   }
 }
 
-//Plugin: closeonblur
+/****** Plugin: closeonblur ******/
+
 //Action: plugin to close popups upon focus elsewhere
 
 !function(signr, doc, active, onEvent) {
@@ -670,7 +672,12 @@ signr.fx.toggle = {
 active = {};
 
 onEvent = function(e, ext, closable) {
-  closable = signr.mixin({}, active);
+  closable = 0;
+  for(ext in active) {
+    closable = signr.mixin({}, active);
+    break;  //iterate only once if active is non-empty
+  }
+  if(!closable) return;  //if no iteration done, then active is null, so abort
   ext = e;
 
   while(ext && (ext = signr.findPopup(ext))) {
@@ -678,7 +685,7 @@ onEvent = function(e, ext, closable) {
     ext = signr.byId(signr.showing[ext.id].nodeID);  //nodeID can be null
   }
 
-  for(ext in closable) if(ext = closable[ext]) signr.hide(ext.extID);
+  for(ext in closable) signr.hide(ext.extID);
 };
 
 signr.onEvent(doc, "mousedown", onEvent);
@@ -688,10 +695,64 @@ signr.fx.closeonblur = {
   show: function(ext, node, options) {
     active[ext.id] = options;
   },
-  hide: function(ext, node, options) {
-    active[ext.id] = null;
+  hide: function(ext, node) {
+    delete active[ext.id];
+  }
+};
+
+}(signr, document);
+
+/****** Plugin: closeonmouseout ******/
+
+//Action: plugin to close popups upon mouseout
+
+!function(signr, doc, active, handle, onEvent) {
+"use strict";
+
+var
+  target,
+  timeout,
+  attr = signr.attr,
+  byId = signr.byId,
+  fx = signr.fx,
+  active = {},
+
+  handle = function(ext, closable, nodeID) {
+    timeout = 0;
+    closable = signr.mixin({}, active);
+
+    ext = target;
+    target = 0;
+
+    while(ext && (ext = signr.findPopup(ext))) {
+      delete closable[ext.id];
+      nodeID = signr.showing[ext.id].nodeID;
+      ext = signr.byId(nodeID);  //nodeID can be null
+      if(ext) delete closable[ext.id];
+    }
+
+    for(ext in closable) signr.hide(closable[ext].extID);
   },
-  evt: onEvent
+
+  onEvent = function(e, i) {
+    for(i in active) {
+      target = e.target || e.srcElement;
+      if(!timeout) timeout = setTimeout(handle, 100);
+      break;  //iterate only once if active is non-empty
+    }
+  };
+
+signr.onEvent(doc, "mouseover", onEvent);
+
+signr.fx.closeonmouseout = {
+  show: function(ext, node, options) {
+    active[ext.id] = options;
+    if(node) active[node.id] = options;
+  },
+  hide: function(ext, node) {
+    delete active[ext.id];
+    if(node) delete active[node.id];
+  }
 };
 
 }(signr, document);
