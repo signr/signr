@@ -91,13 +91,13 @@ var
       if(style in n) return n[style];
     }
 
-  } : function(n, style, value) {  //IE<8 support
+  } : function(n, style, value) {  //IE<=8 support
     if(!style.charAt) {
       for(value in style) css(n, value, style[value]);
       return;
     }
 
-    if(style == "opacity") {
+    if(style == "opacity") {  //IE<=8 support
       if(value !== undefined) {
         n.style.filter = "alpha(opacity="+Math.round(value*100)+")";
       } else {
@@ -176,7 +176,7 @@ var
       };
     }
 
-    return fn = (S.scrolled = scrolled = fn)();
+    return fn = (signr.scrolled = scrolled = fn)();
   },
 
   //gets the size and position of a node relative to the page -> {x:0, y:0, w:0, h:0}
@@ -184,7 +184,7 @@ var
     if(n == doc.body) return bodyPos();
 
     n = n.getBoundingClientRect();
-    scroll = S.scrolled();
+    scroll = signr.scrolled();
     return {
       x: n.left + scroll.x,
       y: n.top + scroll.y,
@@ -248,7 +248,7 @@ var
 
   //ensures a node has an ID, or if not assigns it a unique ID
   ensureHasID = function(n) {
-    if(!n.id) n.id = "xsignr" + S.uniq++;
+    if(!n.id) n.id = "xsignr" + signr.uniq++;
     return n.id;
   },
 
@@ -261,7 +261,7 @@ var
 
     //get options from various sources. We need to get the options
     //first because "ext" and "node" can be null and set by a plugin
-    obj = mixin({}, S.defs);
+    obj = mixin({}, signr.defs);
     if(ext) {
       ext = byId(ext);
       extID = obj.extID = ensureHasID(ext);
@@ -277,7 +277,7 @@ var
     //mixin hints. Hints allow one option to expand into multiple options.
     //e.g., {speechbubble:1} -> {speechbubble:1, fadein:1, roundedge:1}
     for(i in options) {
-      if(S.hints[i]) mixin(options, S.hints[i]);
+      if(signr.hints[i]) mixin(options, signr.hints[i]);
     }
 
     //hereonafter we pass the call to the plugins. Each plugin can contain
@@ -286,7 +286,7 @@ var
     //allow plugins to tweak the options before we do anything
     for(i in options) {
       if(options[i] != nil) {
-        fx = S.fx[i];
+        fx = signr.fx[i];
         if(fx && fx.adopt) {
           if(fx.adopt(ext, node, options, event)) return;  //if returns "true" then abort
         }
@@ -310,12 +310,12 @@ var
       display: "",
       position: !ie6 && css(ext, "position") == "fixed" ? "fixed" : "absolute"
     });
-    delClass(ext, "signr-x");
+    delClass(ext, "signr-x");  //makes element display != none
 
     //position the popup
     for(i in options) {
       if(options[i] != nil) {
-        fx = S.fx[i];
+        fx = signr.fx[i];
         if(fx && fx.position) fx.position(ext, node, options, event);
       }
     }
@@ -323,7 +323,7 @@ var
     //delegate showing to plugins
     for(i in options) {
       if(options[i] != nil) {
-        fx = S.fx[i];
+        fx = signr.fx[i];
         if(fx && fx.show) fx.show(ext, node, options, event);
       }
     }
@@ -334,7 +334,7 @@ var
     return !!showing[byId(ext).id];
   },
 
-  //gets the closest parent node which is a popup, or null
+  //gets the closest node which is a popup, or null
   findPopup = function(n) {
     if(!n.nodeType) n = n.target || n.srcElement;
  
@@ -357,7 +357,7 @@ var
 
         //make sure to call "hide" on all the plugins
         for(i in options) {
-          fx = S.fx[i];
+          fx = signr.fx[i];
           if(fx && fx.hide) fx.hide(ext, node, options, event);
         }
 
@@ -541,7 +541,7 @@ var
       }
     },
 
-    //Plugin: anim
+    //Plugin: ie6shim
     //Autoloading: yes on ie6 only
     //Action: works around the windowed controls problem of selects always on top
     ie6shim: {
@@ -558,7 +558,7 @@ var
       }
     },
 
-    //Plugin: anim
+    //Plugin: dim
     //Action: dims the screen with semi-transparent div added to document body.
     //Params: add "white" option to make dim white, otherwise is black.
     //Params: set dim=X where X >= 0 && X <= 100, default is 30
@@ -582,7 +582,7 @@ var
 
   /****************** Exports ******************/
 
-  S = {
+  signr = {
     ie8: ie8,
     ie7: ie7,
     ie6: ie6,
@@ -627,132 +627,19 @@ var
 //we inject CSS to allow support for these classes:
 //  signr-x : add this to popups so they are hidden by default
 //  signr-shadow : our shadow plugin uses this to create shadows
-!function(n, t) {
+(function(n, t) {
   t = ".signr-x{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
   n.type = "text/css";
   insBefore(n, doc.getElementsByTagName("script")[0]);
   n.styleSheet ? n.styleSheet.cssText = t : n.innerHTML = t;
-}(
+})(
   doc.createElement("style"),
   "box-shadow:1px 1px 7px rgba(0,0,0,0.5);"
 );
 
 //make the iframe shim default under IE6 only
-if(ie6) S.defs.ie6shim = 1;
+if(ie6) signr.defs.ie6shim = 1;
 
-return S;
+return signr;
 
 }(this, document);
-
-/****************** Behavioral Plugins ******************/
-
-/****** Plugin: toggle ******/
-
-//Action: plugin to toggle between showing/hiding a popup. The default
-//  action for popups *without* this plugin is to hide the popup and then
-//  immediately show it again. This plugin will cause it to hide when
-//  invoked in succession.
-
-signr.fx.toggle = {
-  adopt: function(ext, node, o) {
-    //returns false if popup hidden
-    //returns true if popup showing which aborts current request
-    o = signr.showing[ext.id];
-    return o && (o.nodeID == node.id) && (signr.hide(ext) || 1);
-  }
-}
-
-/****** Plugin: closeonblur ******/
-
-//Action: plugin to close popups upon focus elsewhere
-
-!function(signr, doc, active, onEvent) {
-"use strict";
-
-active = {};
-
-onEvent = function(e, ext, closable) {
-  closable = 0;
-  for(ext in active) {
-    closable = signr.mixin({}, active);
-    break;  //iterate only once if active is non-empty
-  }
-  if(!closable) return;  //if no iteration done, then active is null, so abort
-  ext = e;
-
-  while(ext && (ext = signr.findPopup(ext))) {
-    closable[ext.id] = null;
-    ext = signr.byId(signr.showing[ext.id].nodeID);  //nodeID can be null
-  }
-
-  for(ext in closable) signr.hide(ext.extID);
-};
-
-signr.onEvent(doc, "mousedown", onEvent);
-signr.onEvent(doc, window.addEventListener ? "focus" : "focusin", onEvent, true);
-
-signr.fx.closeonblur = {
-  show: function(ext, node, options) {
-    active[ext.id] = options;
-  },
-  hide: function(ext, node) {
-    delete active[ext.id];
-  }
-};
-
-}(signr, document);
-
-/****** Plugin: closeonmouseout ******/
-
-//Action: plugin to close popups upon mouseout
-
-!function(signr, doc, active, handle, onEvent) {
-"use strict";
-
-var
-  target,
-  timeout,
-  attr = signr.attr,
-  byId = signr.byId,
-  fx = signr.fx,
-  active = {},
-
-  handle = function(ext, closable, nodeID) {
-    timeout = 0;
-    closable = signr.mixin({}, active);
-
-    ext = target;
-    target = 0;
-
-    while(ext && (ext = signr.findPopup(ext))) {
-      delete closable[ext.id];
-      nodeID = signr.showing[ext.id].nodeID;
-      ext = signr.byId(nodeID);  //nodeID can be null
-      if(ext) delete closable[ext.id];
-    }
-
-    for(ext in closable) signr.hide(closable[ext].extID);
-  },
-
-  onEvent = function(e, i) {
-    for(i in active) {
-      target = e.target || e.srcElement;
-      if(!timeout) timeout = setTimeout(handle, 100);
-      break;  //iterate only once if active is non-empty
-    }
-  };
-
-signr.onEvent(doc, "mouseover", onEvent);
-
-signr.fx.closeonmouseout = {
-  show: function(ext, node, options) {
-    active[ext.id] = options;
-    if(node) active[node.id] = options;
-  },
-  hide: function(ext, node) {
-    delete active[ext.id];
-    if(node) delete active[node.id];
-  }
-};
-
-}(signr, document);
