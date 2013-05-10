@@ -19,8 +19,7 @@ var  //shortcuts used by all
   fx = signr.fx,
   attr = signr.attr,
   byId = signr.byId,
-  findPopup = signr.findPopup,
-  ADDEVENT = !!window.addEventListener;
+  findPopup = signr.findPopup;
 
 /****************** ignoreifopen ******************/
 //Action: plugin to ignore a request if the popup is already open
@@ -61,7 +60,7 @@ fx.toggle = {
 //and if the event occurs outside a popup or outside the node that 
 //invoked the popup, then the popup is hidden.
 
-var _makeActivatorPlugin = function(events) {
+var _makeDeactivatorPlugin = function(events) {
   var
     target,
     timeout,
@@ -129,12 +128,14 @@ var _makeActivatorPlugin = function(events) {
 /****************** closeonblur ******************/
 //Action: plugin to close popups upon focus elsewhere
 
-fx.closeonblur = _makeActivatorPlugin(ADDEVENT ? {focus:1, mousedown:0} : {focusin:0, mousedown:0});
+fx.closeonblur = _makeDeactivatorPlugin(
+  window.addEventListener ? {focus:1, mousedown:0} : {focusin:0, mousedown:0}
+);
 
 /****************** closeonmouseout ******************/
 //Action: plugin to close popups upon mouseout
 
-fx.closeonmouseout = _makeActivatorPlugin({mouseover:0});
+fx.closeonmouseout = _makeDeactivatorPlugin({mouseover:0});
 
 /****************** end of plugins ******************/
 }(signr, document);
