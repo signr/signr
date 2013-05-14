@@ -255,19 +255,22 @@ var
   //a hashmap of all popups that are visible on screen
   showing = {},
 
+  //private - loops through each plugin
+  eachPlugin = function(o, stage, ext, node, event, allowQuit, i, fx, FX) {
+    FX = signr.fx;
+    for(i in o) {
+      if(o[i] != "null") {
+        fx = FX[i];
+        if(fx && fx[stage]) {
+          if(fx[stage](ext, node, o, event) && allowQuit) return;  //if returns "true" then abort
+        }
+      }
+    }
+  },
+
   //show a popup
   show = function(ext, node, options, event) {
-    var obj, i, extID, nodeID,
-      eachPlugin = function(o, stage, allowQuit, i, fx) {
-        for(i in o) {
-          if(o[i] != "null") {
-            fx = signr.fx[i];
-            if(fx && fx[stage]) {
-              if(fx[stage](ext, node, options, event) && allowQuit) return;  //if returns "true" then abort
-            }
-          }
-        }
-      };
+    var obj, i, extID, nodeID;
 
     //get options from various sources. We need to get the options
     //first because "ext" and "node" can be null and set by a plugin.
@@ -291,10 +294,10 @@ var
     }
 
     //hereonafter we pass the call to the plugins. Each plugin can contain
-    //4 functions which we call if they exist: "adopt, position, show, hide".
+    //5 functions which we call if they exist: "adopt, build, position, show, hide".
 
     //allow plugins to tweak the options before we do anything
-    eachPlugin(options, "adopt", true);
+    eachPlugin(options, "adopt", ext, node, event, true);
 
     //"adopt" may give us new nodes, so re-get them
     ext = byId(options.extID);
@@ -316,13 +319,13 @@ var
     delClass(ext, "signr-x");  //makes element display != none
 
     //plugins can add additional nodes as decoration
-    eachPlugin(options, "build");
+    eachPlugin(options, "build", ext, node, event);
 
     //position the popup
-    eachPlugin(options, "position");
+    eachPlugin(options, "position", ext, node, event);
 
     //delegate showing to plugins
-    eachPlugin(options, "show");
+    eachPlugin(options, "show", ext, node, event);
   },
 
   //whether popup is showing
