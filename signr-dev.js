@@ -22,9 +22,9 @@ var
   ie7 = ie8 && !doc.querySelector,  //ie7 and under
   ie6 = ie7 && !win.XMLHttpRequest,  //ie6
 
-  progid = undefined || "filter:progid:DXImageTransform.Microsoft.",  //for IE filter
-  px = undefined || "px",
-  className = undefined || "className",
+  progid = "filter:progid:DXImageTransform.Microsoft.",  //for IE filter
+  px = "px",
+  className = "className",
 
   //copies all properties from Origin to Target
   mixin = function(t, o) {
@@ -257,11 +257,21 @@ var
 
   //show a popup
   show = function(ext, node, options, event) {
-    var obj, i, fx, extID, nodeID, nil = "null";
+    var obj, i, extID, nodeID,
+      eachPlugin = function(o, stage, allowQuit, i, fx) {
+        for(i in o) {
+          if(o[i] != "null") {
+            fx = signr.fx[i];
+            if(fx && fx[stage]) {
+              if(fx[stage](ext, node, options, event) && allowQuit) return;  //if returns "true" then abort
+            }
+          }
+        }
+      };
 
     //get options from various sources. We need to get the options
-    //first because "ext" and "node" can be null and set by a plugin
-    obj = mixin({}, signr.defs);
+    //first because "ext" and "node" can be null and set by a plugin.
+    obj = mixin({x:{}}, signr.defs);  //x holds a cache of temporary IDs used by plugins
     if(ext) {
       ext = byId(ext);
       extID = obj.extID = ensureHasID(ext);
@@ -284,14 +294,7 @@ var
     //4 functions which we call if they exist: "adopt, position, show, hide".
 
     //allow plugins to tweak the options before we do anything
-    for(i in options) {
-      if(options[i] != nil) {
-        fx = signr.fx[i];
-        if(fx && fx.adopt) {
-          if(fx.adopt(ext, node, options, event)) return;  //if returns "true" then abort
-        }
-      }
-    }
+    eachPlugin(options, "adopt", true);
 
     //"adopt" may give us new nodes, so re-get them
     ext = byId(options.extID);
@@ -312,21 +315,14 @@ var
     });
     delClass(ext, "signr-x");  //makes element display != none
 
+    //plugins can add additional nodes as decoration
+    eachPlugin(options, "build");
+
     //position the popup
-    for(i in options) {
-      if(options[i] != nil) {
-        fx = signr.fx[i];
-        if(fx && fx.position) fx.position(ext, node, options, event);
-      }
-    }
+    eachPlugin(options, "position");
 
     //delegate showing to plugins
-    for(i in options) {
-      if(options[i] != nil) {
-        fx = signr.fx[i];
-        if(fx && fx.show) fx.show(ext, node, options, event);
-      }
-    }
+    eachPlugin(options, "show");
   },
 
   //whether popup is showing
@@ -371,15 +367,16 @@ var
   /****************** Plugins (in built) ******************/
 
   //These are plugins that we delegate all tasks too.
-  //We recognize 4 methods on the plugins that are called in sequence.
+  //We recognize 5 methods on the plugins that are called in sequence.
   //Each method is called on all plugins before the 2nd method is called.
   //
   //  "adopt" is called 1st, that can do anything including 
   //          manipulating the options object. This can return "true"
   //          if you want to abort then popup.
-  //  "position" is called 2nd that can move the popup box anywhere.
-  //  "show" is called 3rd that manipulates CSS to show the node.
-  //  "hide" is called 4th when the popup is being hidden.
+  //  "build" is called 2nd for plugins to add additional nodes
+  //  "position" is called 3rd that can move the popup box anywhere.
+  //  "show" is called 4th that manipulates CSS to show the node.
+  //  "hide" is called 5th when the popup is being hidden.
 
   fx = {
 
@@ -511,29 +508,28 @@ var
     //Action: adds a shadow to the popup
     //Description: On IE it is done using additional nodes and IE filters
     shadow: {
+      build: ie8 ? function(ext, node, options, blur, n) {
+        blur = undefined || "Blur(pixelradius=3,makeshadow='true',shadowOpacity=0.3);",
+        n = make(
+          '<div class="signr-ie8shadow" style="-ms-' + progid + blur +
+          progid + blur + 'background:#000"></div>'
+        );
+        options.x.shadowID = ensureHasID(n);
+        insBefore(n, ext);
+      } : 0,
+
       show: ie8 ? function(ext, node, options, pad) {
-        var 
-          blur = undefined || "Blur(pixelradius=3,makeshadow='true',shadowOpacity=0.3);",
-          n = make('<div class="signr-ie8shadow" style="-ms-' + 
-              progid + blur +
-              progid + blur + 
-              'background:#000"></div>');
-
-        options.shadowID = ensureHasID(n);
-
         if(pad = options.shadowoffset) {
           pad = pad.split(",");
           pad = {x:pad[0]*1, y:pad[1]*1, w:pad[2]*1, h:pad[3]*1};
         }
-
-        insBefore(n, ext);
-        cover(n, ext, pad || this._pad);
+        cover(byId(options.x.shadowID), ext, pad || this._pad);
       } : function(ext) {
         addClass(ext, "signr-shadow");
       },
 
       hide: ie8 ? function(ext, node, options) {
-        remove(options.shadowID);
+        remove(options.x.shadowID);
       } : 0,
 
       _pad: {
@@ -545,16 +541,18 @@ var
     //Autoloading: yes on ie6 only
     //Action: works around the windowed controls problem of selects always on top
     ie6shim: {
-      show: function(ext, node, options, n, s) {
+      build: function(ext, node, options, n) {
         n = make("<iframe class='signr-ie6shim' style='filter:alpha(opacity=1)'" +
             " security=restricted scrolling=no frameborder=0 src='javascript:\"<html><\/html>\";'></iframe>");
-        options.ie6shimID = ensureHasID(n);
+        options.x.ie6shimID = ensureHasID(n);
         insBefore(n, ext);
-        cover(n, ext);
+      },
+      position: function(ext, node, options) {
+        cover(byId(options.x.ie6shimID), ext);
       },
 
       hide: function(ext, node, options) {
-        remove(options.ie6shimID);
+        remove(options.x.ie6shimID);
       }
     },
 
@@ -563,10 +561,14 @@ var
     //Params: add "white" option to make dim white, otherwise is black.
     //Params: set dim=X where X >= 0 && X <= 100, default is 30
     dim: {
-      show: function(ext, node, options, n, white) {
+      build: function(ext, node, options, n) {
         n = make();
-        options.dimBoxID = ensureHasID(n);
+        options.x.dimBoxID = ensureHasID(n);
         insBefore(n, ext);
+      },
+
+      position: function(ext, node, options, n, white) {
+        n = byId(options.x.dimBoxID);
         css(n, {
           opacity: options.dim/100 || 0.3,
           background: ("white" in options) ? "#fff" : "#000"
@@ -575,7 +577,7 @@ var
       },
 
       hide: function(ext, node, options) {
-        remove(options.dimBoxID);
+        remove(options.x.dimBoxID);
       }
     }
   },
@@ -628,6 +630,7 @@ var
 //  signr-x : add this to popups so they are hidden by default
 //  signr-shadow : our shadow plugin uses this to create shadows
 (function(n, t) {
+  "use strict";
   t = ".signr-x{display:none}.signr-shadow{-webkit-" + t + "-moz-" + t + t + "}";
   n.type = "text/css";
   insBefore(n, doc.getElementsByTagName("script")[0]);
